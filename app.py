@@ -25,7 +25,7 @@ selected = st.selectbox("Choose a stock", list(stocks.keys()))
 # --- Fetch Data ---
 with st.spinner("Fetching latest data..."):
     df = get_stock_data(stocks[selected], period="6mo", interval="1d")
-    st.write(df.head())  # 👈 Debug preview for structure
+    st.write(df.head())  # Debug preview for structure
 
 # --- Clean Data ---
 if isinstance(df.columns, pd.MultiIndex):
@@ -50,17 +50,12 @@ st_autorefresh(interval=60 * 1000, key="data_refresh")
 df['returns'] = df['close'].pct_change()
 df['primitive_vix'] = df['returns'].rolling(window=14).std() * np.sqrt(252) * 100  # %
 
-# --- Identify Zones ---
+# --- Identify Buy Signals ---
 HIGH_VOL = 30  # Fear zone = Buy opportunity
-BLUE_LOW, BLUE_HIGH = 12, 15  # Calm zone = Short-sell zone
-
 df['buy_signal'] = df['primitive_vix'] > HIGH_VOL
-df['short_signal'] = df['primitive_vix'].between(BLUE_LOW, BLUE_HIGH)
-
 buy_points = df[df['buy_signal'] & df['close'].notna()]
-short_points = df[df['short_signal'] & df['close'].notna()]
 
-# --- Price Chart with Buy + Short Signals ---
+# --- Price Chart with Buy Signals ---
 fig_price = px.line(df, x='date', y='close', title=f"{selected} – Last 6 Months")
 fig_price.update_traces(line_color='#00CC96')
 
@@ -71,15 +66,6 @@ fig_price.add_scatter(
     mode='markers',
     marker=dict(size=10, color='red', symbol='triangle-up'),
     name='Buy Signal (VIX > 30)'
-)
-
-# Add Short Markers (Blue ▼)
-fig_price.add_scatter(
-    x=short_points['date'],
-    y=short_points['close'],
-    mode='markers',
-    marker=dict(size=10, color='blue', symbol='triangle-down'),
-    name='Short Signal (12 ≤ VIX ≤ 15)'
 )
 
 fig_price.update_layout(
@@ -109,14 +95,6 @@ fig_vix.add_hrect(
     fillcolor="red", opacity=0.1, line_width=0,
     annotation_text="High Volatility Zone (Buy)",
     annotation_position="top left"
-)
-
-# Highlight Calm Zone (Blue)
-fig_vix.add_hrect(
-    y0=BLUE_LOW, y1=BLUE_HIGH,
-    fillcolor="blue", opacity=0.1, line_width=0,
-    annotation_text="Calm Zone (Short)",
-    annotation_position="bottom left"
 )
 
 st.plotly_chart(fig_vix, use_container_width=True)
