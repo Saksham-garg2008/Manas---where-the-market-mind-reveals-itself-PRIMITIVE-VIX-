@@ -10,24 +10,67 @@ st.set_page_config(page_title="Manas", layout="wide")
 
 st.title("📊 Manas - Where the market mind reveals itself.")
 
-# --- Stock Options ---
-stocks = {
-    "TCS": "TCS.NS",
-    "WIPRO": "WIPRO.NS",
-    "INFY": "INFY.NS",
+# =====================================================
+#              STOCK LIST (Categorized)
+# =====================================================
+
+large_cap = {
     "RELIANCE": "RELIANCE.NS",
-    "JSWSTEEL": "JSWSTEEL.NS",
-    "ATGL": "ATGL.NS"
+    "HDFCBANK": "HDFCBANK.NS",
+    "ICICIBANK": "ICICIBANK.NS",
+    "TCS": "TCS.NS",
+    "INFY": "INFY.NS",
+    "HINDUNILVR": "HINDUNILVR.NS"
 }
 
-selected = st.selectbox("Choose a stock", list(stocks.keys()))
+mid_cap = {
+    "TATAPOWER": "TATAPOWER.NS",
+    "JSWSTEEL": "JSWSTEEL.NS",
+    "ADANIGREEN": "ADANIGREEN.NS",
+    "LTTS": "LTTS.NS",
+    "VOLTAS": "VOLTAS.NS",
+    "CUMMINSIND": "CUMMINSIND.NS"
+}
 
-# --- Fetch Data ---
+small_cap = {
+    "TANLA": "TANLA.NS",
+    "CDSL": "CDSL.NS",
+    "BSE": "BSE.NS",
+    "DEEPAKNTR": "DEEPAKNTR.NS",
+    "MAZDOCK": "MAZDOCK.NS",
+    "KRBL": "KRBL.NS"
+}
+
+# Merged dictionary
+stocks = {**large_cap, **mid_cap, **small_cap}
+
+# =====================================================
+#                 UI DROPDOWN (Organized)
+# =====================================================
+
+category = st.selectbox(
+    "Select Category",
+    ["Large Cap", "Mid Cap", "Small Cap"]
+)
+
+if category == "Large Cap":
+    selected = st.selectbox("Choose a stock", list(large_cap.keys()))
+elif category == "Mid Cap":
+    selected = st.selectbox("Choose a stock", list(mid_cap.keys()))
+else:
+    selected = st.selectbox("Choose a stock", list(small_cap.keys()))
+
+symbol = stocks[selected]
+
+# =====================================================
+#                   FETCH DATA
+# =====================================================
+
 with st.spinner("Fetching latest data..."):
-    df = get_stock_data(stocks[selected], period="6mo", interval="1d")
-    st.write(df.head())  # Debug preview for structure
+    df = get_stock_data(symbol, period="6mo", interval="1d")
+    st.write(df.head())  # Debug preview
 
-# --- Clean Data ---
+# Clean data
 if isinstance(df.columns, pd.MultiIndex):
     df.columns = [col[0].lower() for col in df.columns]
 else:
@@ -35,7 +78,10 @@ else:
 
 df = df.dropna(subset=['close']).reset_index(drop=True)
 
-# --- Display Latest Info ---
+# =====================================================
+#                 SHOW LATEST PRICE
+# =====================================================
+
 try:
     latest_price = float(df['close'].tail(1).values[0])
     st.metric(label=f"Latest {selected} Price (₹)", value=f"{latest_price:,.2f}")
@@ -43,23 +89,29 @@ except Exception as e:
     st.error(f"Error getting latest price: {e}")
     st.stop()
 
-# --- Auto-refresh every 60 seconds ---
+# Auto-refresh
 st_autorefresh(interval=60 * 1000, key="data_refresh")
 
-# --- Calculate Primitive VIX ---
-df['returns'] = df['close'].pct_change()
-df['primitive_vix'] = df['returns'].rolling(window=14).std() * np.sqrt(252) * 100  # %
+# =====================================================
+#               PRIMITIVE VIX CALCULATION
+# =====================================================
 
-# --- Identify Buy Signals ---
-HIGH_VOL = 30  # Fear zone = Buy opportunity
+df['returns'] = df['close'].pct_change()
+df['primitive_vix'] = df['returns'].rolling(window=14).std() * np.sqrt(252) * 100
+
+# BUY SIGNAL
+HIGH_VOL = 30
 df['buy_signal'] = df['primitive_vix'] > HIGH_VOL
 buy_points = df[df['buy_signal'] & df['close'].notna()]
 
-# --- Price Chart with Buy Signals ---
+# =====================================================
+#                   PRICE CHART
+# =====================================================
+
 fig_price = px.line(df, x='date', y='close', title=f"{selected} – Last 6 Months")
 fig_price.update_traces(line_color='#00CC96')
 
-# Add Buy Markers (Red ▲)
+# Buy markers
 fig_price.add_scatter(
     x=buy_points['date'],
     y=buy_points['close'],
@@ -72,26 +124,29 @@ fig_price.update_layout(
     xaxis_title="Date",
     yaxis_title="Close Price (₹)",
     template="plotly_dark",
-    title_x=0.5,
-    font=dict(size=14)
+    title_x=0.5
 )
 
 st.plotly_chart(fig_price, use_container_width=True)
 
-# --- Plot Primitive VIX ---
+# =====================================================
+#                   VIX GRAPH
+# =====================================================
+
 st.subheader(f"📈 Primitive Volatility Index (VIX-style) – {selected}")
 
 fig_vix = px.line(
     df, x='date', y='primitive_vix',
     title=f"{selected} – 14-day Rolling Volatility (Primitive VIX)",
-    labels={'primitive_vix': 'Volatility (%)', 'date': 'Date'}
 )
+
 fig_vix.update_traces(line_color='#FFA500')
 fig_vix.update_layout(template="plotly_dark", title_x=0.5)
 
-# Highlight High Volatility Zone (Red)
+# Red zone
 fig_vix.add_hrect(
-    y0=HIGH_VOL, y1=df['primitive_vix'].max(),
+    y0=HIGH_VOL,
+    y1=df['primitive_vix'].max(),
     fillcolor="red", opacity=0.1, line_width=0,
     annotation_text="High Volatility Zone (Buy)",
     annotation_position="top left"
@@ -99,6 +154,6 @@ fig_vix.add_hrect(
 
 st.plotly_chart(fig_vix, use_container_width=True)
 
-# --- Show Latest VIX Value ---
+# Latest VIX
 latest_vix = float(df['primitive_vix'].tail(1).values[0])
 st.metric(label=f"Latest {selected} Volatility (%)", value=f"{latest_vix:,.2f}")
